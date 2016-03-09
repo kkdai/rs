@@ -16,7 +16,6 @@ import (
 	"hash/fnv"
 
 	"github.com/coreos/etcd/raft/raftpb"
-	"golang.org/x/net/context"
 )
 
 const (
@@ -48,7 +47,7 @@ type GetReply struct {
 }
 
 type MsgArgs struct {
-	Ctx     context.Context
+	Ctx     string
 	Message raftpb.Message
 }
 

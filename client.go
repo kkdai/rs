@@ -12,7 +12,10 @@
 
 package rs
 
-import "net/rpc"
+import (
+	"log"
+	"net/rpc"
+)
 import "fmt"
 
 type Clerk struct {
@@ -45,14 +48,16 @@ func MakeClerk(servers []string) *Clerk {
 //
 func call(srv string, rpcname string,
 	args interface{}, reply interface{}) bool {
-	c, errx := rpc.Dial("unix", srv)
+	c, errx := rpc.Dial("tcp", srv)
 	if errx != nil {
+		log.Println("[Client] Dial err:", errx)
 		return false
 	}
 	defer c.Close()
 
 	err := c.Call(rpcname, args, reply)
 	if err == nil {
+		log.Println("[Client] Call err:", err)
 		return true
 	}
 

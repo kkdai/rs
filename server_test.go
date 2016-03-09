@@ -11,7 +11,7 @@ import (
 func TestSingleServer(t *testing.T) {
 	log.Println("TEST >>>>>TestSingleServer<<<<")
 
-	srv := StartServer(socketPort("srv", 1), 1)
+	srv := StartServer(":1234", 1)
 
 	argP := PutArgs{Key: "test1", Value: "v1"}
 	var reP PutReply
@@ -54,8 +54,8 @@ func TestTwoServers(t *testing.T) {
 	log.Println("TEST >>>>>TestTwoServers<<<<")
 
 	serverList := []raft.Peer{{ID: uint64(1)}, {ID: uint64(2)}}
-	srv1 := StartClusterServers(socketPort("srv", 1), 1, serverList)
-	srv2 := StartClusterServers(socketPort("srv", 2), 2, serverList)
+	srv1 := StartClusterServers(":1234", 1, serverList)
+	srv2 := StartClusterServers(":1235", 2, serverList)
 
 	argP := PutArgs{Key: "test1", Value: "v1"}
 	var reP PutReply
@@ -80,17 +80,18 @@ func TestTwoServers(t *testing.T) {
 	log.Println(">>", reP, err)
 
 	log.Printf("** Sleeping to visualize heartbeat between nodes **\n")
-	time.Sleep(2000 * time.Millisecond)
+	time.Sleep(3000 * time.Millisecond)
 
 	argG := GetArgs{Key: "test1"}
 	var reG GetReply
-	err = srv2.Get(&argG, &reG)
+	err = srv1.Get(&argG, &reG)
 	if err != nil || reG.Value != "v3" {
 		t.Error("Error happen on ", err, reG)
 	}
 
 	log.Println(">>", reG, err)
 	log.Println("Stop server..")
+
 	srv1.kill()
 	srv2.kill()
 }

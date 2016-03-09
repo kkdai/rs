@@ -107,7 +107,7 @@ func (n *node) send(messages []raftpb.Message) {
 
 		// send message to other node
 		//nodes[int(m.To)].receive(n.ctx, m)
-		log.Println("[node] Sendmesg", m.To, m, " IM:", n.id)
+		log.Println("[node]Send From:", n.id, "->", m.To, ":", m)
 		n.msgCallback.callback(m.To, n.ctx, m)
 	}
 }

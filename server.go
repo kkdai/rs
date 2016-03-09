@@ -13,23 +13,22 @@
 package rs
 
 import (
+	"encoding/gob"
 	"errors"
+	"fmt"
+	"log"
+	"math/rand"
 	"net"
+	"net/rpc"
+	"os"
 	"strconv"
+	"sync"
+	"syscall"
 
-	"golang.org/x/net/context"
-)
-import "fmt"
-import "net/rpc"
-import "log"
-import "sync"
-import "os"
-import "syscall"
-import "encoding/gob"
-import "math/rand"
-import (
 	"github.com/coreos/etcd/raft"
 	"github.com/coreos/etcd/raft/raftpb"
+
+	"golang.org/x/net/context"
 )
 
 const Debug = 1
@@ -39,7 +38,7 @@ func socketPort(tag string, host int) string {
 	s := "/var/tmp/rs-"
 	s += strconv.Itoa(os.Getuid()) + "/"
 	os.Mkdir(s, 0777)
-	s += "kv-"
+	// s += "rd-"
 	s += strconv.Itoa(os.Getpid()) + "-"
 	s += tag + "-"
 	s += strconv.Itoa(host)
@@ -69,17 +68,27 @@ type KVRaft struct {
 }
 
 func (kv *KVRaft) callback(to uint64, ctx context.Context, message raftpb.Message) {
-	log.Println("[CALLBACK]: IM:", kv.me, " TO:", to, " msg:", message)
-	args := MsgArgs{Ctx: ctx, Message: message}
+	// args := MsgArgs{Ctx: "ctx", Message: message}
 	var reply MsgReply
-	call(socketPort(ServTag, int(to)), "KVRaft.Msg:", &args, &reply)
-	log.Println("[Callback] RPC done", args, reply)
+	var serAddr string
+	if to == 1 {
+		serAddr = ":1234"
+	} else {
+		serAddr = ":1235"
+	}
+
+	log.Println("[CALLBACK]: IM:", kv.me, "->", to, " addr:", serAddr, " ctx:", ctx)
+
+	call(serAddr, "KVRaft.Msg", &message, &reply)
+
+	log.Println("[CALLBACK] RPC done", kv.me, reply)
 	return
 }
 
 //Msg Deliver msg for raft status exchange
-func (kv *KVRaft) Msg(args *MsgArgs, reply *MsgReply) error {
-	kv.raftNode.raft.Step(args.Ctx, args.Message)
+func (kv *KVRaft) Msg(args *raftpb.Message, reply *MsgReply) error {
+	log.Println("[MSG]", *args)
+	kv.raftNode.raft.Step(kv.raftNode.ctx, *args)
 	return nil
 }
 
@@ -158,7 +167,7 @@ func StarServerJoinCluster() {
 
 func startServer(serversPort string, me int, cluster []raft.Peer) *KVRaft {
 	gob.Register(Op{})
-
+	// gob.Register(context.Background())
 	kv := new(KVRaft)
 	kv.me = me
 
@@ -177,13 +186,14 @@ func startServer(serversPort string, me int, cluster []raft.Peer) *KVRaft {
 	// log.Println("Wait for hearbit")
 	// time.Sleep(2000 * time.Millisecond)
 
-	socketFile := socketPort(ServTag, me)
-	if _, err := os.Stat(socketFile); err == nil {
-		//socket exist
-		os.Remove(socketFile)
-	}
+	// socketFile := socketPort(ServTag, me)
+	// if _, err := os.Stat(socketFile); err == nil {
+	// 	//socket exist
+	os.Remove(serversPort)
+	// }
 
-	l, e := net.Listen("unix", serversPort)
+	log.Println("[server] ", me, " ==> ", serversPort)
+	l, e := net.Listen("tcp", serversPort)
 	if e != nil {
 		log.Fatal("listen error: ", e)
 	}
