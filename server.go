@@ -28,7 +28,7 @@ import "encoding/gob"
 import "math/rand"
 import "github.com/coreos/etcd/raft"
 
-const Debug = 0
+const Debug = 1
 
 func socketPort(tag string, host int) string {
 	s := "/var/tmp/rs-"
@@ -68,9 +68,13 @@ type KVRaft struct {
 func (kv *KVRaft) Get(args *GetArgs, reply *GetReply) error {
 	log.Println("[GET]", args)
 	if args.Key == "" {
-		return errors.New("INVALID parameter")
+		log.Println("[GET]", InvalidParam)
+		return errors.New(InvalidParam)
 	}
 
+	for k, v := range kv.raftNode.pstore {
+		log.Println("[GET]  data", k, v)
+	}
 	if v, exist := kv.raftNode.pstore[args.Key]; exist {
 		reply.Value = v
 		return nil
@@ -84,16 +88,21 @@ func (kv *KVRaft) Put(args *PutArgs, reply *PutReply) error {
 	log.Println("[PUT]", args)
 
 	if args.Key == "" || args.Value == "" {
+		log.Println("[PUT]", InvalidParam)
 		err := errors.New(InvalidParam)
 		reply.Err = InvalidParam
 		return err
 	}
 
-	reply.PreviousValue = kv.raftNode.pstore[args.Key]
-	reply.Err = ""
+	if _, exist := kv.raftNode.pstore[args.Key]; exist {
+		reply.PreviousValue = kv.raftNode.pstore[args.Key]
+	}
+
+	reply.Err = "NIL"
 
 	data := fmt.Sprintf("%s:%s", args.Key, args.Value)
 	byteData := []byte(data)
+	log.Println("[PUT] ", byteData)
 	kv.raftNode.raft.Propose(kv.raftNode.ctx, byteData)
 	return nil
 }
@@ -147,8 +156,8 @@ func startServer(serversPort string, me int, cluster []raft.Peer) *KVRaft {
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	log.Println("Wait for hearbit")
-	time.Sleep(2000 * time.Millisecond)
+	// log.Println("Wait for hearbit")
+	// time.Sleep(2000 * time.Millisecond)
 
 	socketFile := socketPort("serv", me)
 	if _, err := os.Stat(socketFile); err == nil {
