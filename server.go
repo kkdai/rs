@@ -16,7 +16,8 @@ import (
 	"errors"
 	"net"
 	"strconv"
-	"time"
+
+	"golang.org/x/net/context"
 )
 import "fmt"
 import "net/rpc"
@@ -26,9 +27,13 @@ import "os"
 import "syscall"
 import "encoding/gob"
 import "math/rand"
-import "github.com/coreos/etcd/raft"
+import (
+	"github.com/coreos/etcd/raft"
+	"github.com/coreos/etcd/raft/raftpb"
+)
 
 const Debug = 1
+const ServTag string = "serv"
 
 func socketPort(tag string, host int) string {
 	s := "/var/tmp/rs-"
@@ -48,10 +53,8 @@ func DPrintf(format string, a ...interface{}) (n int, err error) {
 	return
 }
 
+//Op Basic Raft OP here
 type Op struct {
-	// Your definitions here.
-	// Field names must start with capital letters,
-	// otherwise RPC will break.
 }
 
 type KVRaft struct {
@@ -63,6 +66,21 @@ type KVRaft struct {
 	raftNode   *node
 
 	// Your definitions here.
+}
+
+func (kv *KVRaft) callback(to uint64, ctx context.Context, message raftpb.Message) {
+	log.Println("[CALLBACK]: IM:", kv.me, " TO:", to, " msg:", message)
+	args := MsgArgs{Ctx: ctx, Message: message}
+	var reply MsgReply
+	call(socketPort(ServTag, int(to)), "KVRaft.Msg:", &args, &reply)
+	log.Println("[Callback] RPC done", args, reply)
+	return
+}
+
+//Msg Deliver msg for raft status exchange
+func (kv *KVRaft) Msg(args *MsgArgs, reply *MsgReply) error {
+	kv.raftNode.raft.Step(args.Ctx, args.Message)
+	return nil
 }
 
 func (kv *KVRaft) Get(args *GetArgs, reply *GetReply) error {
@@ -115,7 +133,7 @@ func (kv *KVRaft) kill() {
 	kv.l.Close()
 	kv.raftNode.stop()
 	//remove socket file
-	os.Remove(socketPort("serv", kv.me))
+	os.Remove(socketPort(ServTag, kv.me))
 }
 
 func StartServer(serversPort string, me int) *KVRaft {
@@ -147,19 +165,19 @@ func startServer(serversPort string, me int, cluster []raft.Peer) *KVRaft {
 	rpcs := rpc.NewServer()
 	rpcs.Register(kv)
 
-	kv.raftNode = newNode(uint64(me), cluster)
+	kv.raftNode = newNode(uint64(me), cluster, kv)
 	go kv.raftNode.run()
 
 	// Wait for leader, is there a better way to do this
-	log.Println("Wait for leader")
-	for kv.raftNode.raft.Status().Lead != 1 {
-		time.Sleep(100 * time.Millisecond)
-	}
+	// log.Println("Wait for leader")
+	// for kv.raftNode.raft.Status().Lead != 1 {
+	// 	time.Sleep(100 * time.Millisecond)
+	// }
 
 	// log.Println("Wait for hearbit")
 	// time.Sleep(2000 * time.Millisecond)
 
-	socketFile := socketPort("serv", me)
+	socketFile := socketPort(ServTag, me)
 	if _, err := os.Stat(socketFile); err == nil {
 		//socket exist
 		os.Remove(socketFile)
