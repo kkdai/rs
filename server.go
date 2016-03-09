@@ -16,6 +16,7 @@ import (
 	"errors"
 	"net"
 	"strconv"
+	"time"
 )
 import "fmt"
 import "net/rpc"
@@ -65,17 +66,26 @@ type KVRaft struct {
 }
 
 func (kv *KVRaft) Get(args *GetArgs, reply *GetReply) error {
+	log.Println("[GET]", args)
 	if args.Key == "" {
 		return errors.New("INVALID parameter")
 	}
 
-	return nil
+	if v, exist := kv.raftNode.pstore[args.Key]; exist {
+		reply.Value = v
+		return nil
+	}
+
+	reply.Err = ErrNoKey
+	return errors.New(ErrNoKey)
 }
 
 func (kv *KVRaft) Put(args *PutArgs, reply *PutReply) error {
+	log.Println("[PUT]", args)
+
 	if args.Key == "" || args.Value == "" {
-		err := errors.New("INVALID parameter")
-		reply.Err = "INVALID parameter"
+		err := errors.New(InvalidParam)
+		reply.Err = InvalidParam
 		return err
 	}
 
@@ -100,7 +110,7 @@ func (kv *KVRaft) kill() {
 }
 
 func StartServer(serversPort string, me int) *KVRaft {
-	return startServer(serversPort, me, []raft.Peer{})
+	return startServer(serversPort, me, []raft.Peer{{ID: uint64(me)}})
 }
 
 func StartClusterServers(serversPort string, me int, cluster []raft.Peer) *KVRaft {
@@ -130,6 +140,15 @@ func startServer(serversPort string, me int, cluster []raft.Peer) *KVRaft {
 
 	kv.raftNode = newNode(uint64(me), cluster)
 	go kv.raftNode.run()
+
+	// Wait for leader, is there a better way to do this
+	log.Println("Wait for leader")
+	for kv.raftNode.raft.Status().Lead != 1 {
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	log.Println("Wait for hearbit")
+	time.Sleep(2000 * time.Millisecond)
 
 	socketFile := socketPort("serv", me)
 	if _, err := os.Stat(socketFile); err == nil {

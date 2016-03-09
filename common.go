@@ -15,8 +15,9 @@ package rs
 import "hash/fnv"
 
 const (
-	OK       = "OK"
-	ErrNoKey = "ErrNoKey"
+	OK           = "OK"
+	ErrNoKey     = "ErrNoKey"
+	InvalidParam = "Invalid Parameter"
 )
 
 type Err string
