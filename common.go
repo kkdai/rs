@@ -15,6 +15,8 @@ package rs
 import (
 	"hash/fnv"
 
+	"golang.org/x/net/context"
+
 	"github.com/coreos/etcd/raft/raftpb"
 )
 
@@ -47,7 +49,7 @@ type GetReply struct {
 }
 
 type MsgArgs struct {
-	Ctx     string
+	Ctx     context.Context
 	Message raftpb.Message
 }
 

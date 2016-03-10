@@ -13,6 +13,7 @@
 package rs
 
 import (
+	"bytes"
 	"encoding/gob"
 	"errors"
 	"fmt"
@@ -68,7 +69,25 @@ type KVRaft struct {
 }
 
 func (kv *KVRaft) callback(to uint64, ctx context.Context, message raftpb.Message) {
-	// args := MsgArgs{Ctx: "ctx", Message: message}
+	args := MsgArgs{Ctx: ctx, Message: message}
+	log.Println("CTX: ->encode:", args)
+	var mCache bytes.Buffer
+	encCache := gob.NewEncoder(&mCache)
+	decc := gob.NewDecoder(&mCache)
+
+	err := encCache.Encode(&args)
+	if err != nil {
+		log.Fatal("encode err:", err)
+	}
+
+	var decContext MsgArgs
+	err = decc.Decode(&decContext)
+	if err != nil {
+		log.Fatal("decode err:", err)
+	}
+
+	log.Println("CTX: decode->:", decContext)
+
 	var reply MsgReply
 	var serAddr string
 	if to == 1 {
@@ -78,17 +97,22 @@ func (kv *KVRaft) callback(to uint64, ctx context.Context, message raftpb.Messag
 	}
 
 	log.Println("[CALLBACK]: IM:", kv.me, "->", to, " addr:", serAddr, " ctx:", ctx)
-
-	call(serAddr, "KVRaft.Msg", &message, &reply)
+	rpcByte := mCache.Bytes()
+	call(serAddr, "KVRaft.Msg", &rpcByte, &reply)
 
 	log.Println("[CALLBACK] RPC done", kv.me, reply)
 	return
 }
 
 //Msg Deliver msg for raft status exchange
-func (kv *KVRaft) Msg(args *raftpb.Message, reply *MsgReply) error {
-	log.Println("[MSG]", *args)
-	kv.raftNode.raft.Step(kv.raftNode.ctx, *args)
+func (kv *KVRaft) Msg(args *[]byte, reply *MsgReply) error {
+	rpcArg := bytes.NewBuffer(*args)
+	dec := gob.NewDecoder(rpcArg)
+	var decContext MsgArgs
+	dec.Decode(&decContext)
+
+	log.Println("[MSG]", *args, " CTX dec:", decContext)
+	kv.raftNode.raft.Step(decContext.Ctx, decContext.Message)
 	return nil
 }
 
@@ -168,6 +192,8 @@ func StarServerJoinCluster() {
 func startServer(serversPort string, me int, cluster []raft.Peer) *KVRaft {
 	gob.Register(Op{})
 	// gob.Register(context.Background())
+	gob.Register(MsgArgs{})
+
 	kv := new(KVRaft)
 	kv.me = me
 
