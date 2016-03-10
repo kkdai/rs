@@ -56,6 +56,8 @@ func TestTwoServers(t *testing.T) {
 	serverList := []raft.Peer{{ID: uint64(1)}, {ID: uint64(2)}}
 	srv1 := StartClusterServers(":1234", 1, serverList)
 	srv2 := StartClusterServers(":1235", 2, serverList)
+	srv1.addServer(2, srv2)
+	srv2.addServer(1, srv1)
 
 	argP := PutArgs{Key: "test1", Value: "v1"}
 	var reP PutReply
